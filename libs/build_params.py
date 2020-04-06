@@ -29,8 +29,9 @@ def get_interventions(start_date=datetime.now().date()):
         },
     ]
 
-OUTPUT_DIR = 'results/test'
-OUTPUT_DIR_COUNTIES = 'results/county'
+OUTPUT_DIR = 'results/states'
+OUTPUT_DIR_COUNTIES = 'results/counties'
+OUTPUT_DIR_DOD = 'results/dod'
 
 # Dict to transform longhand state names to abbreviations
 US_STATE_ABBREV =  {

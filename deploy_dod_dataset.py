@@ -1,9 +1,14 @@
 from io import BytesIO
 import boto3
 import os
+import logging
 
+from libs.build_params import OUTPUT_DIR_DOD
+from libs.constants import INTERVENTIONS
 from libs.build_dod_dataset import get_usa_by_county_df, get_usa_by_states_df, get_usa_county_shapefile, get_usa_state_shapefile
 from libs.build_dod_dataset import get_usa_by_county_with_projection_df
+
+logger = logging.getLogger()
 
 class DatasetDeployer():
 
@@ -32,8 +37,8 @@ class DatasetDeployer():
         This method assumes versioned is handled on the bucket itself.
         """
         print('persisting {} to local'.format(self.key))
-
-        with open(self.key, 'wb') as f:
+        path = os.path.join(OUTPUT_DIR_DOD, self.key)
+        with open(path, 'wb') as f:
             # hack to allow the local writer to take either bytes or a string
             # note this assumes that all strings are given in utf-8 and not,
             # like, ASCII
@@ -50,38 +55,47 @@ class DatasetDeployer():
 
 
 def deploy():
-    """The entry function for invokation
+    """The entry function for invocation
 
     """
-    states_blob = {
-        'key': 'states.csv',
-        'body': get_usa_by_states_df().to_csv()
-        }
-    statesObj = DatasetDeployer(**states_blob)
-    statesObj.persist()
+    for intervention in INTERVENTIONS: 
+        logger.info(f"Starting to generate files for {intervention['intervention_name']}.")
 
-    counties_blob = {
-        'key': 'counties.csv',
-        'body': get_usa_by_county_with_projection_df().to_csv()
-        }
-    countiesObj = DatasetDeployer(**counties_blob)
-    countiesObj.persist()
+        states_key_name = f'states.{intervention["intervention_name"]}'
+        states_blob = {
+            'key': f'{states_key_name}.csv',
+            'body': get_usa_by_states_df(intervention["intervention_enum"]).to_csv()
+            }
+        statesObj = DatasetDeployer(**states_blob)
+        statesObj.persist()
+        logger.info(f"Generated state csv for {intervention['intervention_name']}")
 
-    states_shp = BytesIO()
-    states_shx = BytesIO()
-    states_dbf = BytesIO()
-    get_usa_state_shapefile(states_shp, states_shx, states_dbf)
-    DatasetDeployer(key='states.shp', body=states_shp.getvalue()).persist()
-    DatasetDeployer(key='states.shx', body=states_shx.getvalue()).persist()
-    DatasetDeployer(key='states.dbf', body=states_dbf.getvalue()).persist()
+        states_shp = BytesIO()
+        states_shx = BytesIO()
+        states_dbf = BytesIO()
+        get_usa_state_shapefile(states_shp, states_shx, states_dbf, intervention["intervention_enum"])
+        DatasetDeployer(key=f'{states_key_name}.shp', body=states_shp.getvalue()).persist()
+        DatasetDeployer(key=f'{states_key_name}.shx', body=states_shx.getvalue()).persist()
+        DatasetDeployer(key=f'{states_key_name}.dbf', body=states_dbf.getvalue()).persist()
+        logger.info(f"Generated state shape files for {intervention['intervention_name']}")
 
-    counties_shp = BytesIO()
-    counties_shx = BytesIO()
-    counties_dbf = BytesIO()
-    get_usa_county_shapefile(counties_shp, counties_shx, counties_dbf)
-    DatasetDeployer(key='counties.shp', body=counties_shp.getvalue()).persist()
-    DatasetDeployer(key='counties.shx', body=counties_shx.getvalue()).persist()
-    DatasetDeployer(key='counties.dbf', body=counties_dbf.getvalue()).persist()
+        counties_key_name = f'counties.{intervention["intervention_name"]}'
+        counties_blob = {
+            'key': f'{counties_key_name}.csv',
+            'body': get_usa_by_county_with_projection_df(intervention["intervention_enum"]).to_csv()
+            }
+        countiesObj = DatasetDeployer(**counties_blob)
+        countiesObj.persist()
+        logger.info(f"Generated counties csv for {intervention['intervention_name']}")
+
+        counties_shp = BytesIO()
+        counties_shx = BytesIO()
+        counties_dbf = BytesIO()
+        get_usa_county_shapefile(counties_shp, counties_shx, counties_dbf, intervention["intervention_enum"])
+        DatasetDeployer(key=f'{counties_key_name}.shp', body=counties_shp.getvalue()).persist()
+        DatasetDeployer(key=f'{counties_key_name}.shp', body=counties_shx.getvalue()).persist()
+        DatasetDeployer(key=f'{counties_key_name}.shp', body=counties_dbf.getvalue()).persist()
+        logger.info(f"Generated counties shape files for {intervention['intervention_name']}")
 
     print('finished dod job')
 
@@ -91,6 +105,9 @@ if __name__ == "__main__":
 
     # triggering persistance to s3
     AWS_PROFILE=covidactnow BUCKET_NAME=covidactnow-deleteme python deploy_dod_dataset.py
+
+    # deploy to the data bucket
+    AWS_PROFILE=covidactnow BUCKET_NAME=data.covidactnow.org python deploy_dod_dataset.py
 
     # triggering persistance to local
     python deploy_dod_dataset.py
